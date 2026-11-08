@@ -65,7 +65,8 @@ pub fn window(app: &mut KayeApp, ctx: &egui::Context) {
     egui::Window::new("Preferences")
         .open(&mut open)
         .collapsible(false)
-        .fixed_size([760.0, 540.0])
+        // Never bigger than the screen, which on a phone is shorter than this.
+        .fixed_size([760.0_f32.min(ctx.content_rect().width() - 16.0), 540.0_f32.min(ctx.content_rect().height() - 40.0)])
         .pivot(Align2::CENTER_CENTER)
         .default_pos(ctx.content_rect().center())
         .frame(Frame::window(&ctx.global_style()).inner_margin(Margin::same(0)))

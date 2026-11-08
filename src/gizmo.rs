@@ -534,11 +534,11 @@ impl GizmoView<'_> {
         let scale = self.world_scale();
         match self.op {
             OpKind::Move => {
-                if (mouse - center).length() < 11.0 {
+                if (mouse - center).length() < crate::app::touch::reach(11.0) {
                     return Some(Handle::MoveFree);
                 }
                 let mut best = None;
-                let mut best_dist = PICK_DISTANCE;
+                let mut best_dist = crate::app::touch::reach(PICK_DISTANCE);
                 for i in 0..3 {
                     let end = self.frame.pos + self.axis(i) * MOVE_LENGTH * scale;
                     if let Some(end) = self.camera.world_to_screen(end, self.rect) {
@@ -553,7 +553,7 @@ impl GizmoView<'_> {
             }
             OpKind::Rotate => {
                 let mut best = None;
-                let mut best_dist = PICK_DISTANCE;
+                let mut best_dist = crate::app::touch::reach(PICK_DISTANCE);
                 for i in 0..3 {
                     let pts = ring_points(self.camera, self.rect, self.frame.pos, self.axis(i), RING_RADIUS * scale);
                     for w in pts.windows(2) {
@@ -568,7 +568,7 @@ impl GizmoView<'_> {
                 }
                 if best.is_none() {
                     let d = ((mouse - center).length() - VIEW_RING_RADIUS * self.size).abs();
-                    if d < PICK_DISTANCE {
+                    if d < crate::app::touch::reach(PICK_DISTANCE) {
                         return Some(Handle::RotateView);
                     }
                 }

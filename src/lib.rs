@@ -1,5 +1,7 @@
 //! Kaye: a Blender-style animation tool built only for Roblox rigs.
 
+#[cfg(target_os = "android")]
+pub mod android;
 pub mod animation;
 pub mod app;
 pub mod assets;
@@ -12,6 +14,7 @@ pub mod dynamics;
 #[cfg(feature = "devtools")]
 pub mod devscript;
 pub mod export;
+pub mod files;
 pub mod gizmo;
 pub mod history;
 pub mod import;

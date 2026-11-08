@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- versionCode and versionName are filled in by scripts/build-apk.ps1 from Cargo.toml. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.toorium.kaye"
+    android:versionCode="@VERSION_CODE@"
+    android:versionName="@VERSION_NAME@">
+
+    <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35" />
+    <uses-feature android:glEsVersion="0x00030000" android:required="true" />
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:label="Kaye"
+        android:icon="@mipmap/ic_launcher"
+        android:hasCode="true"
+        android:extractNativeLibs="true"
+        android:largeHeap="true"
+        android:theme="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen">
+        <activity
+            android:name="com.toorium.kaye.KayeActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:screenOrientation="sensorLandscape"
+            android:resizeableActivity="true"
+            android:windowSoftInputMode="adjustNothing"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|smallestScreenSize|density|uiMode|navigation">
+            <meta-data android:name="android.app.lib_name" android:value="kaye_mobile" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

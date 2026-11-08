@@ -1,0 +1,21 @@
+# Kaye for Android phones and tablets. This is only where Android starts Kaye: everything
+# else is the same Kaye as on a computer. scripts/build-apk.ps1 builds the .apk from it.
+[package]
+name = "kaye-mobile"
+version.workspace = true
+edition = "2024"
+description = "Kaye for Android"
+publish = false
+
+[lib]
+name = "kaye_mobile"
+path = "src/lib.rs"
+crate-type = ["cdylib"]
+
+[target.'cfg(target_os = "android")'.dependencies]
+kaye = { path = ".." }
+android-activity = { version = "0.6", features = ["native-activity"] }
+eframe = { version = "0.37.0", default-features = false, features = ["wgpu", "default_fonts", "clipboard", "links", "android-native-activity"] }
+jni = "0.21.1"
+log = "0.4"
+android_logger = "0.15"

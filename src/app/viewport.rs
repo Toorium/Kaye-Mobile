@@ -53,7 +53,7 @@ pub fn panel(app: &mut KayeApp, ui: &mut Ui, frame: &mut eframe::Frame) {
         theme::window()
     };
     CentralPanel::default().frame(Frame::new().fill(backdrop)).show(ui, |ui| {
-        Panel::top("viewport_header").exact_size(chrome::STRIP_HEIGHT).frame(chrome::strip_frame()).show(ui, |ui| header(app, ui));
+        Panel::top("viewport_header").exact_size(chrome::strip_height()).frame(chrome::strip_frame()).show(ui, |ui| header(app, ui));
         let rect = ui.available_rect_before_wrap();
         app.viewport_rect = rect;
         scene_view(app, ui, rect, frame);
@@ -245,6 +245,9 @@ fn camera_input(
     mouse: Option<Pos2>,
 ) {
     let nav = app.settings.navigation.clone();
+    if super::touch::on() {
+        touch_navigation(app, response, delta, rect);
+    }
     let middle = response.dragged_by(PointerButton::Middle);
     let alt_left = nav.alt_left_orbit && modifiers.alt && response.dragged_by(PointerButton::Primary) && app.session.is_none();
     // Moving the view means leaving the camera, as in Blender.
@@ -275,6 +278,60 @@ fn camera_input(
     }
 }
 
+/// Fingers on the 3D view. One finger dragged across empty space turns the view, as the
+/// middle mouse button does. Two fingers move it and pinch to zoom, and once a second
+/// finger has landed nothing else happens until every finger is lifted, so letting go
+/// doesn't select or turn anything by accident.
+fn touch_navigation(app: &mut KayeApp, response: &egui::Response, delta: egui::Vec2, rect: Rect) {
+    let nav = app.settings.navigation.clone();
+    let (down, multi) = response.ctx.input(|i| (i.pointer.any_down(), i.multi_touch()));
+    let released = response.clicked() || response.drag_stopped();
+    if !down && multi.is_none() && !released {
+        app.touch.gesture = false;
+    }
+    let leave_camera = |app: &mut KayeApp| {
+        if app.camera.through.is_some() {
+            app.camera_view.through = false;
+            app.camera.through = None;
+        }
+    };
+    if let Some(multi) = multi.filter(|m| m.num_touches >= 2) {
+        // A handle being dragged keeps going whatever another finger does.
+        if app.session.is_some() || !(app.touch.gesture || rect.contains(multi.center_pos)) {
+            return;
+        }
+        app.touch.gesture = true;
+        app.box_select = None;
+        leave_camera(app);
+        let moved = multi.translation_delta;
+        if moved != egui::Vec2::ZERO {
+            app.camera.pan(moved.x * nav.pan_speed, moved.y * nav.pan_speed, rect);
+        }
+        if multi.zoom_delta != 1.0 && multi.zoom_delta > 0.0 {
+            // Fingers spreading apart bring the view closer.
+            let factor = 1.0 / multi.zoom_delta;
+            if nav.zoom_to_mouse {
+                app.camera.zoom_at(factor, multi.center_pos, rect);
+            } else {
+                app.camera.zoom(factor);
+            }
+        }
+        response.ctx.request_repaint();
+        return;
+    }
+    if app.touch.gesture || app.touch.box_select || app.session.is_some() || app.box_select.is_some() {
+        return;
+    }
+    if response.dragged_by(PointerButton::Primary) && delta != egui::Vec2::ZERO {
+        leave_camera(app);
+        let (dx, dy) = (delta.x * nav.orbit_speed, delta.y * nav.orbit_speed);
+        match app.selection_center().filter(|_| nav.orbit_around_selection) {
+            Some(pivot) => app.camera.orbit_about(dx, dy, pivot),
+            None => app.camera.orbit(dx, dy),
+        }
+    }
+}
+
 fn gizmo_view(app: &KayeApp, rect: Rect) -> Option<GizmoView<'_>> {
     let op = app.tool.op()?;
     if app.mode == Mode::Rigging {
@@ -285,7 +342,7 @@ fn gizmo_view(app: &KayeApp, rect: Rect) -> Option<GizmoView<'_>> {
                 frame: moving.frame(&app.scene),
                 space: app.view.space,
                 op,
-                size: app.settings.viewport.gizmo_size,
+                size: gizmo_size(app, rect),
             });
         }
     }
@@ -297,7 +354,7 @@ fn gizmo_view(app: &KayeApp, rect: Rect) -> Option<GizmoView<'_>> {
             frame: app.scene.rig_frame(rig),
             space: app.view.space,
             op,
-            size: app.settings.viewport.gizmo_size,
+            size: gizmo_size(app, rect),
         });
     }
     let selected = app.selected_bone()?;
@@ -316,7 +373,7 @@ fn gizmo_view(app: &KayeApp, rect: Rect) -> Option<GizmoView<'_>> {
         frame: app.scene.bones[bone].frame,
         space: app.view.space,
         op,
-        size: app.settings.viewport.gizmo_size,
+        size: gizmo_size(app, rect),
     })
 }
 
@@ -385,6 +442,10 @@ fn pose_input(
         return;
     }
 
+    // Lifting the fingers after moving the view with two isn't a tap.
+    if response.clicked() && app.touch.gesture {
+        return;
+    }
     if response.clicked() {
         if app.swallow_click {
             app.swallow_click = false;
@@ -434,7 +495,9 @@ fn pose_input(
     }
     let orbiting = modifiers.alt && app.settings.navigation.alt_left_orbit;
     // The press that ended a G or R move isn't the start of a drag box.
-    if response.drag_started_by(PointerButton::Primary) && !orbiting && !app.swallow_click {
+    // On a touch screen a drag turns the view, unless Box Select is on.
+    let boxing = !super::touch::on() || app.touch.box_select;
+    if response.drag_started_by(PointerButton::Primary) && !orbiting && !app.swallow_click && boxing {
         app.box_select = ctx.input(|i| i.pointer.press_origin()).or(Some(mouse));
         return;
     }
@@ -459,7 +522,7 @@ fn rig_pick(app: &KayeApp, rect: Rect, mouse: Pos2) -> Selection {
         spots
             .into_iter()
             .filter_map(|(selection, at)| to_screen(at).map(|s| (selection, s.distance(mouse))))
-            .filter(|(_, d)| *d < RIG_PICK)
+            .filter(|(_, d)| *d < super::touch::reach(RIG_PICK))
             .min_by(|a, b| a.1.total_cmp(&b.1))
             .map(|(selection, _)| selection)
     };
@@ -566,7 +629,7 @@ pub fn pick(app: &KayeApp, rect: Rect, mouse: Pos2) -> Selection {
     let to_screen = app.camera.projector(rect);
     // A root only shows with its camera picked, so it goes ahead of everything else.
     for (rig, _) in shown_roots(app) {
-        if to_screen(scene.rigs[rig].placement.pos).is_some_and(|at| at.distance(mouse) < BONE_PICK_DISTANCE) {
+        if to_screen(scene.rigs[rig].placement.pos).is_some_and(|at| at.distance(mouse) < super::touch::reach(BONE_PICK_DISTANCE)) {
             return Selection::Rig(rig);
         }
     }
@@ -585,7 +648,7 @@ pub fn pick(app: &KayeApp, rect: Rect, mouse: Pos2) -> Selection {
         if let Some(d) = gizmo::bone_screen_distance(scene, id, &to_screen, mouse) {
             // Controls sit right on top of joints, and would be unreachable otherwise.
             let d = if kind.is_joint() { d } else { d - BONE_PICK_DISTANCE };
-            if d < BONE_PICK_DISTANCE && best.is_none_or(|(_, b)| d < b) {
+            if d < super::touch::reach(BONE_PICK_DISTANCE) && best.is_none_or(|(_, b)| d < b) {
                 best = Some((id, d));
             }
         }
@@ -1928,4 +1991,15 @@ pub fn bone_menu(app: &mut KayeApp, ui: &mut Ui) {
         app.frame_selection();
         ui.close();
     }
+}
+
+/// The handles' size. A phone's 3D view is short, so there they shrink to fit in it, or the
+/// rings would run off the top and bottom.
+fn gizmo_size(app: &KayeApp, rect: Rect) -> f32 {
+    let size = app.settings.viewport.gizmo_size;
+    if !super::touch::on() {
+        return size;
+    }
+    // The outer ring is 90 points out from the middle at size 1.
+    size * (rect.height() * 0.32 / 90.0).clamp(0.5, 1.0)
 }

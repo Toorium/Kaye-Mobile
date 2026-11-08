@@ -60,6 +60,12 @@ impl UpdatePopup {
         self.found.as_ref().filter(|_| self.dismissed).map(|r| r.version.as_str())
     }
 
+    /// Where the newer version downloads from: on a phone, its .apk.
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    pub fn download_url(&self) -> Option<String> {
+        self.found.as_ref()?.files.first().map(|f| f.url.clone())
+    }
+
     pub fn reopen(&mut self) {
         self.dismissed = false;
     }
@@ -101,7 +107,11 @@ pub fn window(app: &mut KayeApp, ctx: &egui::Context) {
             });
         });
         ui.add_space(4.0);
-        let how = "Kaye will close, download the update and open again. Your projects, settings and backups aren't touched.";
+        let how = if cfg!(target_os = "android") {
+            "Your browser downloads the new Kaye. Open it when it's done to install it over this one. Your projects, settings and backups stay."
+        } else {
+            "Kaye will close, download the update and open again. Your projects, settings and backups aren't touched."
+        };
         ui.label(RichText::new(how).size(TEXT_SIZE).color(theme::text_dim()));
         ui.add_space(8.0);
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {

@@ -24,6 +24,11 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# Kaye-Mobile shares this script with the computer version. Phones are published with
+# publish-apk.ps1, and this must never publish the computer version from there.
+if ((git -C (Split-Path -Parent $PSScriptRoot) remote get-url origin) -match 'Kaye-Mobile') {
+    throw 'This is Kaye-Mobile. Publish the phone version with scripts\publish-apk.ps1, and the computer version from the Kaye folder.'
+}
 $project = Split-Path -Parent $PSScriptRoot
 $latestPath = Join-Path $project 'latest.json'
 
@@ -65,7 +70,8 @@ $headers = @{
 }
 
 & (Join-Path $PSScriptRoot 'build-installer.ps1')
-$release = Join-Path $env:LOCALAPPDATA 'kaye-release-target\release'
+. (Join-Path $PSScriptRoot 'release-target.ps1')
+$release = Join-Path (Get-ReleaseTarget $project) 'release'
 $msi = Join-Path $project "dist\Kaye-$version.msi"
 # Each file of an update: where it goes beside kaye.exe, and where this build left it.
 $shipped = @(

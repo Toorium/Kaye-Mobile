@@ -9,11 +9,14 @@ mod icons;
 mod kept;
 mod loading;
 pub mod preferences;
+#[cfg(target_os = "android")]
+mod phone_text;
 mod references;
 mod rig_mode;
 mod side;
 pub mod theme;
 pub mod timeline;
+pub mod touch;
 mod update_popup;
 pub mod updater;
 mod viewport;
@@ -418,13 +421,21 @@ pub struct KayeApp {
     spare_parts: RefCell<Vec<crate::render::DrawItem>>,
     /// The parts with a mesh or texture to fetch, and how many parts there were when listed.
     pub(crate) asset_parts: Option<(usize, Vec<PartId>)>,
+    /// What a touch screen hides behind buttons, see `touch.rs`.
+    pub touch: touch::Panels,
     #[cfg(feature = "devtools")]
     script: Option<crate::devscript::DevScript>,
 }
 
 impl KayeApp {
     pub fn new(cc: &eframe::CreationContext<'_>, open: Vec<PathBuf>, settings: Settings, graphics_failed: Option<GraphicsApi>) -> Self {
+        touch::init();
         theme::apply(&cc.egui_ctx);
+        if touch::on() {
+            // A finger lands a little off and moves a little while pressing, so a press that
+            // wanders this far is still a tap.
+            cc.egui_ctx.options_mut(|o| o.input_options.max_click_dist = 14.0);
+        }
         theme::apply_settings(&cc.egui_ctx, &settings.theme, settings.interface.tooltips);
         cc.egui_ctx.set_zoom_factor(settings.interface.ui_scale);
         let render_state: &egui_wgpu::RenderState = cc
@@ -545,6 +556,7 @@ impl KayeApp {
             counts: std::cell::Cell::new(None),
             spare_parts: RefCell::new(Vec::new()),
             asset_parts: None,
+            touch: touch::Panels::default(),
             #[cfg(feature = "devtools")]
             script: crate::devscript::DevScript::from_env(),
         };
@@ -1132,8 +1144,9 @@ impl KayeApp {
                 export::write_animation(&path, &world, &current, rig)
             }
         };
-        if let Err(message) = written {
-            self.toast(ToastKind::Error, format!("{name} couldn't be exported: {message}"));
+        match written {
+            Ok(()) => crate::files::finished_writing(&path),
+            Err(message) => self.toast(ToastKind::Error, format!("{name} couldn't be exported: {message}")),
         }
     }
 
@@ -1840,7 +1853,7 @@ impl KayeApp {
         let loads = self.loads.clone();
         self.importing += 1;
         std::thread::spawn(move || {
-            let picked = rfd::FileDialog::new()
+            let picked = crate::files::FileDialog::new()
                 .set_title("Import a Roblox rig")
                 .add_filter("Roblox model", &["rbxm", "rbxmx", "rblxm"])
                 .add_filter("All files", &["*"])
@@ -2114,6 +2127,13 @@ impl KayeApp {
                 self.import_paths(ctx, vec![path]);
             }
             Leave::Open(None) => self.open_project_dialog(ctx),
+            // A phone installs an update itself, from the .apk the browser downloads.
+            #[cfg(target_os = "android")]
+            Leave::Update => match self.update.download_url() {
+                Some(url) if crate::android::open_url(&url) => {}
+                _ => self.toast(ToastKind::Error, "The update couldn't be opened. It's on the Kaye-Mobile page on GitHub."),
+            },
+            #[cfg(not(target_os = "android"))]
             Leave::Update => match crate::update::start_updater() {
                 Ok(()) => self.close_without_asking(ctx),
                 Err(error) => self.toast(ToastKind::Error, format!("The updater didn't start: {error}")),
@@ -2269,7 +2289,7 @@ impl KayeApp {
     fn open_project_dialog(&mut self, ctx: &egui::Context) {
         let (tx, repaint, loads) = (self.open_tx.clone(), ctx.clone(), self.loads.clone());
         std::thread::spawn(move || {
-            let picked = rfd::FileDialog::new().set_title("Open a Kaye project").add_filter("Kaye project", &[project::EXTENSION]).pick_file();
+            let picked = crate::files::FileDialog::new().set_title("Open a Kaye project").add_filter("Kaye project", &[project::EXTENSION]).pick_file();
             if let Some(path) = picked {
                 let _load = LoadGuard::new(&loads);
                 repaint.request_repaint();
@@ -2881,7 +2901,7 @@ impl KayeApp {
         let repaint = ctx.clone();
         let loads = self.loads.clone();
         std::thread::spawn(move || {
-            let picked = rfd::FileDialog::new()
+            let picked = crate::files::FileDialog::new()
                 .set_title("Choose a background image")
                 .add_filter("Image", &["png", "jpg", "jpeg", "webp", "bmp", "gif"])
                 .pick_file();
@@ -3281,7 +3301,7 @@ fn pick_save_path(name: &str) -> Option<PathBuf> {
     if let Some(path) = std::env::var_os("KAYE_DEV_SAVE_AS") {
         return Some(path.into());
     }
-    rfd::FileDialog::new()
+    crate::files::FileDialog::new()
         .set_title("Save Kaye project")
         .add_filter("Kaye project", &[project::EXTENSION])
         .set_file_name(format!("{name}.{}", project::EXTENSION))
@@ -3293,7 +3313,7 @@ fn pick_export_path(name: &str) -> Option<PathBuf> {
     if let Some(path) = std::env::var_os("KAYE_DEV_EXPORT_AS") {
         return Some(path.into());
     }
-    rfd::FileDialog::new()
+    crate::files::FileDialog::new()
         .set_title("Export animation")
         .add_filter("Roblox model", &[export::EXTENSION])
         .set_file_name(format!("{name}.{}", export::EXTENSION))
@@ -3347,6 +3367,7 @@ impl eframe::App for KayeApp {
         let ctx = ui.ctx().clone();
         self.paint_background(ui);
         self.fit_to_screen(&ctx);
+        touch::size_panels(&mut self.touch, &ctx);
         self.poll_renderer();
         self.poll_imports();
         self.poll_saves(&ctx);
@@ -3381,12 +3402,23 @@ impl eframe::App for KayeApp {
 
         // Panels take their space in this order, so the bars and the timeline run the
         // full width of the window.
-        chrome::menu_bar(self, ui);
+        // A phone has one bar in place of the menu bar and the shelf, see `touch.rs`.
+        let phone = touch::is_phone(&ctx) && !self.home.open;
+        if phone {
+            chrome::phone_bar(self, ui);
+        } else {
+            chrome::menu_bar(self, ui);
+        }
         if self.home.open {
             home::panel(self, ui);
         } else {
-            chrome::shelf(self, ui);
-            chrome::status_bar(self, ui);
+            if !phone {
+                chrome::shelf(self, ui);
+            }
+            // A phone has no room for it, and what it says is in the Workspace too.
+            if !touch::on() {
+                chrome::status_bar(self, ui);
+            }
             // Rigging works on the rig at rest, with no keys to show.
             if self.mode == rig_mode::Mode::Animation {
                 timeline::panel(self, ui);
@@ -3396,7 +3428,9 @@ impl eframe::App for KayeApp {
                 self.keys_seen = self.timeline.selected.clone();
             }
             chrome::tool_column(self, ui);
-            side::panel(self, ui);
+            if !touch::on() || self.touch.side {
+                side::panel(self, ui);
+            }
             viewport::panel(self, ui, frame);
             dragout::check(self, &ctx, frame);
             references::windows(self, &ctx);
@@ -3409,6 +3443,8 @@ impl eframe::App for KayeApp {
         self.take_thumbnail(&ctx);
         self.apply_settings_changes(&ctx);
         self.settle_live_edit(&ctx);
+        #[cfg(target_os = "android")]
+        phone_text::after_frame(&ctx);
         if self.startup_frames > 0 {
             self.startup_frames -= 1;
             if self.startup_frames == 0 {
@@ -3424,6 +3460,8 @@ impl eframe::App for KayeApp {
 
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
         dragout::finish(self, raw_input);
+        #[cfg(target_os = "android")]
+        phone_text::inject(raw_input);
         #[cfg(feature = "devtools")]
         if let Some(script) = &mut self.script {
             script.step(_ctx, raw_input);

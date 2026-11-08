@@ -17,6 +17,16 @@
   </p>
 </div>
 
+## Kaye on Android
+
+This is Kaye for Android phones and tablets. It's the same program as on a computer, with the same look, laid out for fingers: bigger buttons, one bar on a phone in place of the menu bar and shelf, and the Workspace behind a button.
+
+**To install it:** open the [latest Android release](https://github.com/Toorium/Kaye-Mobile/releases/latest) on your phone and download the `.apk`. Android asks once to allow installs from your browser. After that, Kaye tells you when there's a new version.
+
+**In the 3D view:** drag with one finger to turn the view, and with two fingers to move it. Pinch to zoom. Tap a part to select it, and drag a handle to move or rotate it. Hold a finger down for the right-click menu. Box Select, under the tools on the left, makes a drag select instead.
+
+Projects you save stay inside Kaye and show on its home page. Rigs, projects and pictures open from anywhere on the phone through Open and Import, and exports are saved where you pick.
+
 ![Kaye with an R6 rig in Roblox's template clothing, its bones drawn on top and the Workspace listing its joints](docs/images/cover-r6.png)
 
 Kaye is a free animation program made only for Roblox. Open your rig's `.rbxm`, animate it, and drag the result straight back into Studio. No add-ons to install, no converting files, no rig to rebuild.

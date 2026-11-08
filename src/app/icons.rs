@@ -96,6 +96,9 @@ icons! {
     PopOut => "arrow-square-out",
     PopIn => "arrow-square-in",
     Attachment => "push-pin-simple",
+    // For touch screens, see touch.rs.
+    SidePanel => "sidebar-simple",
+    BoxSelect => "selection",
 }
 
 thread_local! {

@@ -273,7 +273,7 @@ pub fn pick_files(app: &mut KayeApp, ctx: &egui::Context) {
     let (tx, rx) = channel();
     let repaint = ctx.clone();
     std::thread::spawn(move || {
-        let picked = rfd::FileDialog::new()
+        let picked = crate::files::FileDialog::new()
             .set_title("Add a reference")
             .add_filter("Pictures and videos", &media::extensions())
             .add_filter("All files", &["*"])

@@ -16,7 +16,8 @@
 $ErrorActionPreference = 'Stop'
 $project = Split-Path -Parent $PSScriptRoot
 $dist = Join-Path $project 'dist'
-$target = Join-Path $env:LOCALAPPDATA 'kaye-release-target'
+. (Join-Path $PSScriptRoot 'release-target.ps1')
+$target = Get-ReleaseTarget $project
 $release = Join-Path $target 'release'
 
 function Invoke-Cargo {

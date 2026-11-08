@@ -8,7 +8,7 @@ use egui::{Align2, Color32, ComboBox, DragValue, FontId, Pos2, Rect, Sense, Shap
 
 use super::icons::{self, Icon};
 use super::kept::{Kept, Signature};
-use super::timeline::{KEY_PICK, Layout2, ROW_HEIGHT, easing_editor, key_shape};
+use super::timeline::{Layout2, easing_editor, key_pick, key_shape, row_height};
 use super::{HandleKind, KayeApp, theme};
 use crate::animation::{Animation, CHANNEL_NAMES, CHANNELS, EaseStyle, FrameNumber, HandleType, KeyId, Track, VALUE_CHANNEL, angles_near};
 use crate::gizmo::axis_colors;
@@ -212,7 +212,7 @@ fn hit(app: &KayeApp, layout: &Layout2, plot: &Plot, pos: Pos2) -> Option<Point>
         all.iter()
             .filter(|m| (m.point.grip != Grip::Key) == handles)
             .map(|m| (m.point, (m.pos - pos).length()))
-            .filter(|(_, d)| *d <= KEY_PICK)
+            .filter(|(_, d)| *d <= key_pick())
             .min_by(|a, b| a.1.total_cmp(&b.1))
             .map(|(point, _)| point)
     };
@@ -710,11 +710,11 @@ fn channel_list(app: &mut KayeApp, ui: &mut Ui, layout: &Layout2) {
     let painter = ui.painter_at(list);
     let rows = channel_rows(app);
     for (index, row_kind) in rows.iter().copied().enumerate() {
-        let y = list.top() + (index as f32 + 0.5) * ROW_HEIGHT - app.timeline.scroll;
-        if y + ROW_HEIGHT < list.top() || y - ROW_HEIGHT > list.bottom() {
+        let y = list.top() + (index as f32 + 0.5) * row_height() - app.timeline.scroll;
+        if y + row_height() < list.top() || y - row_height() > list.bottom() {
             continue;
         }
-        let row = Rect::from_center_size(pos2(list.center().x, y), vec2(list.width(), ROW_HEIGHT));
+        let row = Rect::from_center_size(pos2(list.center().x, y), vec2(list.width(), row_height()));
         let (bone, channel) = match row_kind {
             ChannelRow::Bone(bone) => {
                 painter.rect_filled(row, 0.0, theme::header());

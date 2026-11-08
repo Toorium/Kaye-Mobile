@@ -26,7 +26,11 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 /// The file on GitHub that says which version is newest.
+#[cfg(not(target_os = "android"))]
 pub const LATEST_URL: &str = "https://raw.githubusercontent.com/Toorium/Kaye/main/latest.json";
+/// Phones have their own releases, each one an .apk, published from Kaye-Mobile.
+#[cfg(target_os = "android")]
+pub const LATEST_URL: &str = "https://raw.githubusercontent.com/Toorium/Kaye-Mobile/main/latest-android.json";
 /// This build's version, from `Cargo.toml`.
 pub const CURRENT: &str = env!("CARGO_PKG_VERSION");
 /// Beside the exe, holding downloads and the files they replaced.

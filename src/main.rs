@@ -88,8 +88,8 @@ fn main() -> eframe::Result {
         viewport: egui::ViewportBuilder::default()
             .with_title("Kaye")
             .with_icon(kaye::app::window_icon())
-            .with_inner_size(kaye::app::WINDOW_SIZE)
-            .with_min_inner_size([900.0, 560.0])
+            .with_inner_size(window_size())
+            .with_min_inner_size([window_size()[0].min(900.0), window_size()[1].min(560.0)])
             .with_drag_and_drop(true)
             // Scripted test runs should not take focus from whatever is in front.
             .with_active(!cfg!(feature = "devtools")),
@@ -129,4 +129,16 @@ fn run_updater(parent: Option<u32>) -> eframe::Result {
         ..Default::default()
     };
     eframe::run_native("Kaye Updater", options, Box::new(move |cc| Ok(Box::new(kaye::app::updater::Updater::new(cc, &settings, parent)))))
+}
+
+/// 1600 by 900, or in a devtools build `KAYE_DEV_WINDOW`, such as `915x412` for a phone's
+/// screen with `KAYE_TOUCH=1`.
+fn window_size() -> [f32; 2] {
+    #[cfg(feature = "devtools")]
+    if let Some((w, h)) = std::env::var("KAYE_DEV_WINDOW").ok().and_then(|v| v.split_once('x').map(|(w, h)| (w.parse().ok(), h.parse().ok()))) {
+        if let (Some(w), Some(h)) = (w, h) {
+            return [w, h];
+        }
+    }
+    kaye::app::WINDOW_SIZE
 }

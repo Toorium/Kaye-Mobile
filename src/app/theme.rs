@@ -509,7 +509,38 @@ pub fn apply(ctx: &egui::Context) {
         w.active.corner_radius = radius;
         w.active.expansion = 0.0;
         w.open.corner_radius = radius;
+
+        if super::touch::on() {
+            touch_style(style);
+        }
     });
+}
+
+/// The same look, sized for fingers: rows, buttons and checkboxes a finger can hit, and
+/// text that reads at arm's length.
+fn touch_style(style: &mut egui::Style) {
+    style.text_styles = [
+        (TextStyle::Small, FontId::new(12.5, FontFamily::Proportional)),
+        (TextStyle::Body, FontId::new(14.0, FontFamily::Proportional)),
+        (TextStyle::Button, FontId::new(14.0, FontFamily::Proportional)),
+        (TextStyle::Heading, FontId::new(16.0, FontFamily::Proportional)),
+        (TextStyle::Monospace, FontId::new(13.5, FontFamily::Monospace)),
+    ]
+    .into();
+    let s = &mut style.spacing;
+    s.item_spacing = Vec2::new(6.0, 5.0);
+    s.button_padding = Vec2::new(10.0, 6.0);
+    s.interact_size = Vec2::new(44.0, 32.0);
+    s.menu_margin = Margin::same(4);
+    s.indent = 16.0;
+    s.icon_width = 18.0;
+    s.icon_width_inner = 11.0;
+    s.icon_spacing = 8.0;
+    s.combo_height = 320.0;
+    s.scroll.bar_width = 14.0;
+    s.scroll.floating = false;
+    // There's no hovering on a touch screen, so a tip only shows on a long press.
+    style.interaction.tooltip_delay = 0.6;
 }
 
 /// Tahoma, chosen by the owner for its desktop-tool look. Kaye still works with the
@@ -525,8 +556,9 @@ fn load_system_fonts(ctx: &egui::Context) {
         fonts.font_data.insert(name.to_owned(), std::sync::Arc::new(egui::FontData::from_owned(bytes).tweak(tweak)));
         true
     };
-    let regular = load("tahoma", "C:/Windows/Fonts/tahoma.ttf");
-    let bold = load("tahoma bold", "C:/Windows/Fonts/tahomabd.ttf");
+    // A phone has no Tahoma, so it gets its own Roboto, which reads well that small.
+    let regular = load("tahoma", "C:/Windows/Fonts/tahoma.ttf") || load("tahoma", "/system/fonts/Roboto-Regular.ttf");
+    let bold = load("tahoma bold", "C:/Windows/Fonts/tahomabd.ttf") || load("tahoma bold", "/system/fonts/RobotoStatic-Bold.ttf") || load("tahoma bold", "/system/fonts/Roboto-Bold.ttf");
     let family = fonts.families.entry(FontFamily::Proportional).or_default();
     if regular {
         family.insert(0, "tahoma".to_owned());

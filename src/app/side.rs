@@ -15,9 +15,13 @@ use crate::onion::{self, OnionMode};
 use crate::scene::{BoneId, BoneKind, BoneLink, Drive, FolderId, PartId, PartShape, RigId, RigKind};
 use crate::settings::Action;
 
-const ROW_HEIGHT: f32 = 20.0;
+const ROW_BASE: f32 = 20.0;
+/// A row's height, taller for a finger.
+fn row_height() -> f32 {
+    super::touch::size(ROW_BASE)
+}
 const INDENT: f32 = 14.0;
-const CHANNEL_HEIGHT: f32 = 20.0;
+const CHANNEL_BASE: f32 = 20.0;
 const LABEL_WIDTH: f32 = 74.0;
 /// Widest a field of view can go before a picture falls apart.
 const MAX_FOV: f32 = 120.0;
@@ -196,7 +200,7 @@ fn push_bone(app: &KayeApp, bone: BoneId, depth: usize, rig: RigId, rows: &mut V
 fn outliner(app: &mut KayeApp, ui: &mut Ui) {
     chrome::strip_frame().show(ui, |ui| {
         ui.set_width(ui.available_width());
-        ui.set_height(chrome::STRIP_HEIGHT);
+        ui.set_height(chrome::strip_height());
         ui.horizontal_centered(|ui| {
             chrome::editor_tab(ui, "Workspace", true);
             ui.add_space(4.0);
@@ -216,15 +220,15 @@ fn outliner(app: &mut KayeApp, ui: &mut Ui) {
     Frame::new().fill(theme::panel_deep()).show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = 0.0;
         // Only the rows on screen get built. A model can have tens of thousands.
-        let empty = ScrollArea::vertical().auto_shrink(false).id_salt("outliner_rows").show_rows(ui, ROW_HEIGHT, rows.len(), |ui, shown| {
+        let empty = ScrollArea::vertical().auto_shrink(false).id_salt("outliner_rows").show_rows(ui, row_height(), rows.len(), |ui, shown| {
             // Under the rows, so a right click or a drop on empty space lands here.
             let visible = ui.clip_rect();
             let empty = ui.interact(visible, ui.make_persistent_id("outliner_empty"), Sense::click());
             if app.scroll_to_selection {
                 // The row may be off screen and not built, so its place has to be worked out.
                 if let Some(index) = rows.iter().rposition(|row| row_is_selected(app, row)) {
-                    let top = ui.max_rect().top() + (index as f32 - shown.start as f32) * ROW_HEIGHT;
-                    ui.scroll_to_rect(Rect::from_x_y_ranges(ui.max_rect().x_range(), top..=top + ROW_HEIGHT), None);
+                    let top = ui.max_rect().top() + (index as f32 - shown.start as f32) * row_height();
+                    ui.scroll_to_rect(Rect::from_x_y_ranges(ui.max_rect().x_range(), top..=top + row_height()), None);
                 }
             }
             for index in shown {
@@ -232,7 +236,7 @@ fn outliner(app: &mut KayeApp, ui: &mut Ui) {
             }
             // Holding something near the top or bottom edge scrolls, to reach rows past it.
             if let (Some(_), Some(pointer)) = (&dragging, ui.ctx().pointer_latest_pos()) {
-                let edge = ROW_HEIGHT;
+                let edge = row_height();
                 let step = if pointer.y < visible.top() + edge && visible.x_range().contains(pointer.x) {
                     6.0
                 } else if pointer.y > visible.bottom() - edge && visible.x_range().contains(pointer.x) {
@@ -373,7 +377,7 @@ fn paint_drag_ghost(app: &KayeApp, ctx: &egui::Context, dragged: &Dragged, at: e
     ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
     let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::unique("workspace_drag")));
     let galley = painter.layout_no_wrap(name, FontId::proportional(12.0), theme::ink());
-    let rect = Rect::from_min_size(at + vec2(14.0, 8.0), vec2(galley.size().x + 32.0, ROW_HEIGHT + 2.0));
+    let rect = Rect::from_min_size(at + vec2(14.0, 8.0), vec2(galley.size().x + 32.0, row_height() + 2.0));
     painter.rect_filled(rect, 3.0, theme::section());
     painter.rect_stroke(rect, 3.0, Stroke::new(1.0, theme::accent()), egui::StrokeKind::Inside);
     icons::paint(&painter, Rect::from_center_size(rect.left_center() + vec2(13.0, 0.0), Vec2::splat(13.0)), icon, tint);
@@ -437,7 +441,7 @@ fn outliner_row(app: &mut KayeApp, ui: &mut Ui, rows: &[Row], index: usize) {
     let row = &rows[index];
     let draggable = item_of(app, row).is_some();
     let sense = if draggable { Sense::click_and_drag() } else { Sense::click() };
-    let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_HEIGHT), sense);
+    let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), row_height()), sense);
     let selection = row_selection(row);
     let (name, trailing, icon, tint) = match row.kind {
         RowKind::Folder(f) => (app.scene.folders[f].name.clone(), None, Icon::Folder, theme::text_dim()),
@@ -743,7 +747,7 @@ fn properties(app: &mut KayeApp, ui: &mut Ui) {
     let shown = if app.modifier_bone().is_some() { app.props_tab } else { PropsTab::Item };
     chrome::strip_frame().show(ui, |ui| {
         ui.set_width(ui.available_width());
-        ui.set_height(chrome::STRIP_HEIGHT);
+        ui.set_height(chrome::strip_height());
         ui.horizontal_centered(|ui| {
             ui.spacing_mut().item_spacing.x = 1.0;
             for (tab, label) in [(PropsTab::Item, "Properties"), (PropsTab::Modifiers, "Modifiers")] {
@@ -902,7 +906,7 @@ pub(super) fn channel_field(value: &mut f32, speed: f64) -> DragValue<'_> {
 pub(super) fn channel_row(ui: &mut Ui, label: &str, field: DragValue<'_>, tint: Option<Color32>) -> egui::Response {
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
-        ui.spacing_mut().interact_size.y = CHANNEL_HEIGHT;
+        ui.spacing_mut().interact_size.y = super::touch::size(CHANNEL_BASE);
         ui.spacing_mut().button_padding.y = 1.0;
         theme::sunken(ui);
         if let Some(tint) = tint {
@@ -912,10 +916,10 @@ pub(super) fn channel_row(ui: &mut Ui, label: &str, field: DragValue<'_>, tint: 
             visuals.widgets.hovered.weak_bg_fill = theme::lighter(tint);
         }
         let width = (ui.available_width() * 0.5).clamp(90.0, 160.0);
-        let (rect, _) = ui.allocate_exact_size(vec2((ui.available_width() - width - 6.0).max(0.0), CHANNEL_HEIGHT), Sense::hover());
+        let (rect, _) = ui.allocate_exact_size(vec2((ui.available_width() - width - 6.0).max(0.0), super::touch::size(CHANNEL_BASE)), Sense::hover());
         ui.painter().text(rect.right_center(), Align2::RIGHT_CENTER, label, FontId::proportional(12.0), theme::text());
         ui.add_space(2.0);
-        ui.add_sized([width, CHANNEL_HEIGHT], field)
+        ui.add_sized([width, super::touch::size(CHANNEL_BASE)], field)
     })
     .inner
 }

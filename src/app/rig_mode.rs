@@ -17,7 +17,11 @@ use crate::rigging;
 use crate::scene::{BoneId, BoneLink, Drive, PartId, RigId, RigState, Scene};
 use crate::settings::Action;
 
-const ROW_HEIGHT: f32 = 20.0;
+const ROW_BASE: f32 = 20.0;
+/// A row's height, taller for a finger.
+fn row_height() -> f32 {
+    super::touch::size(ROW_BASE)
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Mode {
@@ -264,8 +268,8 @@ fn release(scene: &mut Scene, animation: &mut Animation, part: PartId) {
 pub fn mode_tabs(app: &mut KayeApp, ui: &mut Ui) {
     const TABS: [(Mode, &str); 2] = [(Mode::Animation, "Animation"), (Mode::Rigging, "Rigging")];
     // The same widths `editor_tab` gives them, with the gap between.
-    let font = FontId::proportional(12.0);
-    let width: f32 = TABS.iter().map(|(_, label)| ui.painter().layout_no_wrap(label.to_string(), font.clone(), theme::text()).size().x + 17.0).sum();
+    let font = FontId::proportional(super::touch::text(12.0));
+    let width: f32 = TABS.iter().map(|(_, label)| ui.painter().layout_no_wrap(label.to_string(), font.clone(), theme::text()).size().x + super::touch::size(16.0) + 1.0).sum();
     let row = ui.max_rect();
     let middle = ui.ctx().content_rect().center().x;
     let place = Rect::from_min_size(pos2(middle - width * 0.5, row.top()), vec2(width, row.height()));
@@ -358,16 +362,16 @@ fn rows(scene: &Scene) -> Vec<(usize, Row)> {
 pub fn workspace(app: &mut KayeApp, ui: &mut Ui) {
     chrome::strip_frame().show(ui, |ui| {
         ui.set_width(ui.available_width());
-        ui.set_height(chrome::STRIP_HEIGHT);
+        ui.set_height(chrome::strip_height());
         ui.horizontal_centered(|ui| {
             chrome::editor_tab(ui, "Workspace", true);
         });
     });
     let rows = rows(&app.scene);
     let (ctrl, shift) = ui.input(|i| (i.modifiers.ctrl, i.modifiers.shift));
-    ScrollArea::vertical().auto_shrink(false).id_salt("rig_workspace").show_rows(ui, ROW_HEIGHT, rows.len(), |ui, range| {
+    ScrollArea::vertical().auto_shrink(false).id_salt("rig_workspace").show_rows(ui, row_height(), rows.len(), |ui, range| {
         for &(depth, row) in &rows[range] {
-            let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_HEIGHT), Sense::click());
+            let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), row_height()), Sense::click());
             let selected = match row {
                 Row::Part(p) => app.rigging.picks.contains(&p),
                 other => app.is_selected(other.selection()),
@@ -420,7 +424,7 @@ pub fn workspace(app: &mut KayeApp, ui: &mut Ui) {
 pub fn properties(app: &mut KayeApp, ui: &mut Ui) {
     chrome::strip_frame().show(ui, |ui| {
         ui.set_width(ui.available_width());
-        ui.set_height(chrome::STRIP_HEIGHT);
+        ui.set_height(chrome::strip_height());
         ui.horizontal_centered(|ui| {
             chrome::editor_tab(ui, "Properties", true);
         });

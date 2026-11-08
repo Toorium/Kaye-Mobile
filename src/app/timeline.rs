@@ -20,10 +20,18 @@ const ANIMATION_POPUP_WIDTH: f32 = 240.0;
 /// How many rows of the animation list show before it scrolls, and the name field's width.
 const ANIMATION_LIST_HEIGHT: f32 = 180.0;
 const ANIMATION_NAME_WIDTH: f32 = 130.0;
-const HEADER_HEIGHT: f32 = 30.0;
-const RULER_HEIGHT: f32 = 22.0;
-pub(super) const ROW_HEIGHT: f32 = 20.0;
-pub(super) const KEY_PICK: f32 = 7.0;
+const HEADER_BASE: f32 = 30.0;
+const RULER_BASE: f32 = 22.0;
+pub(super) const ROW_BASE: f32 = 20.0;
+/// A track's height, taller for a finger.
+pub(super) fn row_height() -> f32 {
+    super::touch::size(ROW_BASE)
+}
+pub(super) const KEY_PICK_BASE: f32 = 7.0;
+/// How close to a key a press picks it.
+pub(super) fn key_pick() -> f32 {
+    super::touch::reach(KEY_PICK_BASE)
+}
 /// The strip at the left of a bone's row that opens its channels.
 const EXPANDER_WIDTH: f32 = 15.0;
 /// The eye at the right of a reference's row.
@@ -140,10 +148,23 @@ pub fn panel(app: &mut KayeApp, ui: &mut Ui) {
         BottomTab::Timeline => ("timeline", 210.0),
         BottomTab::Graph => ("graph", 310.0),
     };
+    // A phone's screen is short, so the timeline starts with room for its header, the
+    // ruler and a few tracks, and the 3D view keeps the rest.
+    let height = if super::touch::is_phone(ui.ctx()) { (ui.ctx().content_rect().height() * 0.36).max(130.0) } else { super::touch::size(height) };
+    if super::touch::on() && !app.touch.timeline {
+        // Closed down to its header, which keeps the play buttons in reach.
+        Panel::bottom("timeline_closed")
+            .exact_size(super::touch::size(HEADER_BASE))
+            .resizable(false)
+            .frame(Frame::new().fill(theme::panel()))
+            .show(ui, |ui| header(app, ui));
+        app.timeline.hovered = false;
+        return;
+    }
     Panel::bottom(id)
         .resizable(true)
         .default_size(height)
-        .size_range(80.0..=620.0)
+        .size_range(super::touch::size(80.0)..=620.0)
         .frame(Frame::new().fill(theme::panel()))
         .show(ui, |ui| {
             header(app, ui);
@@ -156,7 +177,7 @@ pub fn panel(app: &mut KayeApp, ui: &mut Ui) {
 fn number_field(ui: &mut Ui, value: &mut i32, width: f32, prefix: &str) -> bool {
     ui.scope(|ui| {
         theme::sunken(ui);
-        ui.add_sized([width, 22.0], DragValue::new(value).speed(0.25).prefix(prefix)).changed()
+        ui.add_sized(super::touch::size2(vec2(width, 22.0)), DragValue::new(value).speed(0.25).prefix(prefix)).changed()
     })
     .inner
 }
@@ -164,21 +185,39 @@ fn number_field(ui: &mut Ui, value: &mut i32, width: f32, prefix: &str) -> bool 
 fn header(app: &mut KayeApp, ui: &mut Ui) {
     chrome::strip_frame().show(ui, |ui| {
         ui.set_width(ui.available_width());
-        ui.set_height(HEADER_HEIGHT);
+        ui.set_height(super::touch::size(HEADER_BASE));
+        if super::touch::on() {
+            // Too much for a phone's width, so it slides sideways, with what's used most first.
+            egui::ScrollArea::horizontal()
+                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+                .show(ui, |ui| {
+                    ui.horizontal_centered(|ui| {
+                        ui.spacing_mut().item_spacing.x = 1.0;
+                        open_toggle(app, ui);
+                        ui.add_space(4.0);
+                        tabs(app, ui);
+                        ui.add_space(10.0);
+                        transport(app, ui);
+                        ui.add_space(10.0);
+                        key_controls(app, ui);
+                        ui.add_space(10.0);
+                        animation_picker(app, ui);
+                        ui.add_space(10.0);
+                        let mut frame = app.whole_frame();
+                        if number_field(ui, &mut frame, 70.0, "Frame ") {
+                            app.pause();
+                            app.set_frame(frame as f32);
+                        }
+                        ui.add_space(10.0);
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        range_fields_in_order(app, ui);
+                    });
+                });
+            return;
+        }
         ui.horizontal_centered(|ui| {
             ui.spacing_mut().item_spacing.x = 1.0;
-            for (kind, label) in [(BottomTab::Timeline, "Timeline"), (BottomTab::Graph, "Graph")] {
-                if chrome::editor_tab(ui, label, app.bottom_tab == kind).clicked() && app.bottom_tab != kind {
-                    app.bottom_tab = kind;
-                    // Each tab has its own list down the side, which shouldn't inherit
-                    // how far the other one was scrolled.
-                    app.timeline.scroll = 0.0;
-                    app.timeline.shown_bone = None;
-                    if kind == BottomTab::Graph {
-                        graph::opened(app);
-                    }
-                }
-            }
+            tabs(app, ui);
             ui.add_space(10.0);
             key_controls(app, ui);
             ui.add_space(10.0);
@@ -198,6 +237,59 @@ fn header(app: &mut KayeApp, ui: &mut Ui) {
             });
         });
     });
+}
+
+/// Closes the timeline down to this header, or opens it again, on a touch screen. The arrow
+/// points the way the panel will go.
+fn open_toggle(app: &mut KayeApp, ui: &mut Ui) {
+    let (rect, response) = ui.allocate_exact_size(super::touch::size2(Vec2::splat(22.0)), Sense::click());
+    let fill = if response.is_pointer_button_down_on() { theme::field_active() } else { theme::field() };
+    ui.painter().rect_filled(rect, theme::RADIUS, fill);
+    let open = app.touch.timeline;
+    let c = rect.center();
+    let s = super::touch::size(5.0);
+    // Down to close, up to open.
+    let points = if open {
+        vec![c + vec2(-s, -s * 0.5), c + vec2(s, -s * 0.5), c + vec2(0.0, s * 0.6)]
+    } else {
+        vec![c + vec2(-s, s * 0.5), c + vec2(s, s * 0.5), c + vec2(0.0, -s * 0.6)]
+    };
+    ui.painter().add(egui::Shape::convex_polygon(points, theme::ink(), egui::Stroke::NONE));
+    let tip = if open { "Close the timeline, leaving its play buttons" } else { "Open the timeline" };
+    if chrome::tooltip(response, tip).clicked() {
+        app.touch.timeline = !open;
+    }
+}
+
+fn tabs(app: &mut KayeApp, ui: &mut Ui) {
+    for (kind, label) in [(BottomTab::Timeline, "Timeline"), (BottomTab::Graph, "Graph")] {
+        if chrome::editor_tab(ui, label, app.bottom_tab == kind).clicked() && app.bottom_tab != kind {
+            app.bottom_tab = kind;
+            // Each tab has its own list down the side, which shouldn't inherit
+            // how far the other one was scrolled.
+            app.timeline.scroll = 0.0;
+            app.timeline.shown_bone = None;
+            if kind == BottomTab::Graph {
+                graph::opened(app);
+            }
+        }
+    }
+}
+
+/// Start, End and FPS, left to right, for a touch screen's sliding header.
+fn range_fields_in_order(app: &mut KayeApp, ui: &mut Ui) {
+    let mut start = app.animation.start;
+    if number_field(ui, &mut start, 76.0, "Start ") {
+        app.animation.start = start.min(app.animation.end - 1);
+    }
+    let mut end = app.animation.end;
+    if number_field(ui, &mut end, 76.0, "End ") {
+        app.animation.end = end.max(app.animation.start + 1);
+    }
+    let mut fps = app.animation.fps as i32;
+    if number_field(ui, &mut fps, 62.0, "FPS ") {
+        app.animation.fps = fps.clamp(1, 240) as f32;
+    }
 }
 
 fn key_controls(app: &mut KayeApp, ui: &mut Ui) {
@@ -417,10 +509,10 @@ fn reveal_selected_track(app: &mut KayeApp, layout: &Layout2, bones: &[BoneId]) 
     let Some(row) = selected.and_then(|bone| rows.iter().position(|r| *r == TrackRow::Bone(bone))) else {
         return;
     };
-    let top = row as f32 * ROW_HEIGHT;
+    let top = row as f32 * row_height();
     let height = layout.area.height();
-    if top < app.timeline.scroll || top + ROW_HEIGHT > app.timeline.scroll + height {
-        app.timeline.scroll = (top + ROW_HEIGHT * 0.5 - height * 0.5).max(0.0);
+    if top < app.timeline.scroll || top + row_height() > app.timeline.scroll + height {
+        app.timeline.scroll = (top + row_height() * 0.5 - height * 0.5).max(0.0);
     }
 }
 
@@ -432,8 +524,8 @@ fn body(app: &mut KayeApp, ui: &mut Ui, rect: Rect) {
     let side = Rect::from_min_max(rect.min, pos2(rect.left() + side_width, rect.bottom()));
     let layout = Layout2 {
         side,
-        ruler: Rect::from_min_max(pos2(side.right(), rect.top()), pos2(right, rect.top() + RULER_HEIGHT)),
-        area: Rect::from_min_max(pos2(side.right(), rect.top() + RULER_HEIGHT), pos2(right, rect.bottom())),
+        ruler: Rect::from_min_max(pos2(side.right(), rect.top()), pos2(right, rect.top() + super::touch::size(RULER_BASE))),
+        area: Rect::from_min_max(pos2(side.right(), rect.top() + super::touch::size(RULER_BASE)), pos2(right, rect.bottom())),
         start: app.timeline.view_start,
         end: app.timeline.view_end,
         tick_spacing: app.settings.animation.tick_spacing,
@@ -473,7 +565,7 @@ fn body(app: &mut KayeApp, ui: &mut Ui, rect: Rect) {
         graph::side_panels(app, ui, rect, &layout);
     }
     // The corner above the track list, so nothing scrolls under it.
-    ui.painter().rect_filled(Rect::from_min_size(layout.side.min, vec2(layout.side.width(), RULER_HEIGHT)), 0.0, theme::panel());
+    ui.painter().rect_filled(Rect::from_min_size(layout.side.min, vec2(layout.side.width(), super::touch::size(RULER_BASE))), 0.0, theme::panel());
     context_menus(app, &layout, &response);
     if let Some(Drag::BoxSelect { anchor, .. }) = &app.timeline.drag {
         if let Some(mouse) = ui.input(|i| i.pointer.latest_pos()) {
@@ -622,11 +714,11 @@ fn paint_playhead(app: &KayeApp, painter: &egui::Painter, layout: &Layout2) {
 
 /// The vertical center of a row, where row 0 is the summary.
 fn row_y(app: &KayeApp, layout: &Layout2, row: usize) -> f32 {
-    layout.area.top() + (row as f32 + 0.5) * ROW_HEIGHT - app.timeline.scroll
+    layout.area.top() + (row as f32 + 0.5) * row_height() - app.timeline.scroll
 }
 
 fn hit_row(app: &KayeApp, layout: &Layout2, y: f32, rows: usize) -> Option<usize> {
-    let row = ((y - layout.area.top() + app.timeline.scroll) / ROW_HEIGHT).floor();
+    let row = ((y - layout.area.top() + app.timeline.scroll) / row_height()).floor();
     (row >= 0.0 && (row as usize) < rows).then_some(row as usize)
 }
 
@@ -640,7 +732,7 @@ fn keys_at(app: &KayeApp, layout: &Layout2, bones: &[BoneId], pos: Pos2) -> Vec<
     let closest = |frames: &mut dyn Iterator<Item = FrameNumber>| {
         frames
             .map(|f| (f, (layout.x(f as f32) - pos.x).abs()))
-            .filter(|(_, d)| *d <= KEY_PICK)
+            .filter(|(_, d)| *d <= key_pick())
             .min_by(|a, b| a.1.total_cmp(&b.1))
             .map(|(f, _)| f)
     };
@@ -883,14 +975,14 @@ fn paint_tracks(app: &mut KayeApp, ui: &Ui, layout: &Layout2, bones: &[BoneId]) 
 
     // The summary row sits first and collects every key in the rig.
     let center = row_y(app, layout, 0);
-    let row_rect = |y: f32| Rect::from_center_size(pos2(full.center().x, y), vec2(full.width(), ROW_HEIGHT));
+    let row_rect = |y: f32| Rect::from_center_size(pos2(full.center().x, y), vec2(full.width(), row_height()));
     row_painter.rect_filled(row_rect(center), 0.0, theme::header());
     list_painter.text(pos2(list.left() + 8.0, center), Align2::LEFT_CENTER, "Summary", theme::strong_font(11.5), theme::text());
 
     let mut shaded = false;
     for (row, kind) in rows.iter().copied().enumerate().skip(1) {
         let y = row_y(app, layout, row);
-        let on_screen = y + ROW_HEIGHT >= full.top() && y - ROW_HEIGHT <= full.bottom();
+        let on_screen = y + row_height() >= full.top() && y - row_height() <= full.bottom();
         let bone = match kind {
             TrackRow::Bone(bone) => {
                 shaded = !shaded;
@@ -1041,7 +1133,7 @@ fn key_shapes(app: &KayeApp, layout: &Layout2, bones: &[BoneId], rows: &[TrackRo
 
     for (row, kind) in rows.iter().copied().enumerate().skip(1) {
         let y = row_y(app, layout, row);
-        if y + ROW_HEIGHT < area.top() || y - ROW_HEIGHT > area.bottom() {
+        if y + row_height() < area.top() || y - row_height() > area.bottom() {
             continue;
         }
         let (bone, channel) = match kind {
@@ -1100,7 +1192,7 @@ fn paint_reference_row(app: &KayeApp, list_painter: &egui::Painter, key_painter:
     icons::paint(list_painter, eye, if open { Icon::Eye } else { Icon::EyeOff }, theme::text_dim());
 
     let (start, end) = reference.span(references::rate(app, reference));
-    let strip = Rect::from_min_max(pos2(layout.x(start as f32), y - ROW_HEIGHT * 0.5 + 2.0), pos2(layout.x(end as f32), y + ROW_HEIGHT * 0.5 - 2.0));
+    let strip = Rect::from_min_max(pos2(layout.x(start as f32), y - row_height() * 0.5 + 2.0), pos2(layout.x(end as f32), y + row_height() * 0.5 - 2.0));
     let color = theme::camera_icon();
     let dragged = matches!(&app.timeline.drag, Some(Drag::Strip { id, .. }) if *id == reference.id);
     key_painter.rect_filled(strip, 3.0, color.gamma_multiply(if dragged { 0.55 } else { 0.35 }));
@@ -1116,7 +1208,7 @@ fn paint_reference_row(app: &KayeApp, list_painter: &egui::Painter, key_painter:
         key_painter.rect_filled(bar, 0.0, theme::ink());
     }
     // Only clipped at the sides, since Tahoma sits a little low in its line.
-    let text_area = Rect::from_x_y_ranges(strip.shrink2(vec2(8.0, 0.0)).x_range(), (y - ROW_HEIGHT * 0.5)..=(y + ROW_HEIGHT * 0.5)).intersect(layout.area);
+    let text_area = Rect::from_x_y_ranges(strip.shrink2(vec2(8.0, 0.0)).x_range(), (y - row_height() * 0.5)..=(y + row_height() * 0.5)).intersect(layout.area);
     if text_area.width() > 8.0 {
         key_painter.with_clip_rect(text_area).text(pos2(text_area.left(), y - 1.0), Align2::LEFT_CENTER, &reference.name, FontId::proportional(11.0), theme::ink());
     }
@@ -1124,7 +1216,7 @@ fn paint_reference_row(app: &KayeApp, list_painter: &egui::Painter, key_painter:
 
 /// One channel open under its bone: its name beside the keys that set it.
 fn paint_channel_name(app: &KayeApp, list_painter: &egui::Painter, list: Rect, y: f32, bone: BoneId, channel: usize) {
-    list_painter.hline(list.left() + 30.0..=list.right(), y - ROW_HEIGHT * 0.5, Stroke::new(1.0, Color32::from_white_alpha(6)));
+    list_painter.hline(list.left() + 30.0..=list.right(), y - row_height() * 0.5, Stroke::new(1.0, Color32::from_white_alpha(6)));
     let swatch = Rect::from_center_size(pos2(list.left() + 36.0, y), vec2(3.0, 11.0));
     list_painter.rect_filled(swatch, 1.0, graph::channel_color(channel));
     list_painter.text(pos2(list.left() + 44.0, y), Align2::LEFT_CENTER, graph::channel_name(app, bone, channel), FontId::proportional(11.5), theme::text_dim());

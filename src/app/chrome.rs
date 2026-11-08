@@ -6,6 +6,7 @@ use egui::{Align, Align2, Button, Color32, CornerRadius, FontId, Frame, Label, L
 
 use super::icons::{self, Icon};
 use super::theme;
+use super::touch;
 use super::{KayeApp, Leave, Selection, Tool};
 use crate::camera::ViewPreset;
 use crate::export::{self, Pack};
@@ -14,12 +15,17 @@ use crate::scene::{BoneId, BoneKind, PartShape, RigKind};
 use crate::settings::{Action, Shading, ShelfTab};
 
 /// The strip along the top of an editor, holding its tabs or menus.
-pub const STRIP_HEIGHT: f32 = 24.0;
+const STRIP_HEIGHT: f32 = 24.0;
 const MENU_BAR_HEIGHT: f32 = 24.0;
 const SHELF_HEIGHT: f32 = 34.0;
 const SHELF_ICON: f32 = 20.0;
 const TOOL_COLUMN_WIDTH: f32 = 38.0;
 const STATUS_BAR_HEIGHT: f32 = 22.0;
+
+/// The height of the strip along the top of an editor.
+pub fn strip_height() -> f32 {
+    touch::size(STRIP_HEIGHT)
+}
 
 pub fn bar_frame(fill: Color32, x: i8, y: i8) -> Frame {
     Frame::new().fill(fill).inner_margin(Margin::symmetric(x, y))
@@ -33,8 +39,8 @@ pub fn strip_frame() -> Frame {
 /// A flat text tab. The active one is a lighter block, as in Maya's panel headers.
 pub fn editor_tab(ui: &mut Ui, label: &str, active: bool) -> egui::Response {
     let color = if active { theme::ink() } else { theme::text_dim() };
-    let galley = ui.painter().layout_no_wrap(label.to_string(), FontId::proportional(12.0), color);
-    let (rect, response) = ui.allocate_exact_size(vec2(galley.size().x + 16.0, 20.0), Sense::click());
+    let galley = ui.painter().layout_no_wrap(label.to_string(), FontId::proportional(touch::text(12.0)), color);
+    let (rect, response) = ui.allocate_exact_size(vec2(galley.size().x + touch::size(16.0), touch::size(20.0)), Sense::click());
     if active {
         ui.painter().rect_filled(rect, 0.0, theme::section());
     } else if response.hovered() {
@@ -67,7 +73,7 @@ pub fn paint_triangle(painter: &egui::Painter, center: Pos2, open: bool, color: 
 /// Square icon button. The tooltip names it, for anyone who doesn't know the icon.
 pub fn icon_button(ui: &mut Ui, icon: Icon, enabled: bool, active: bool, tip: &str) -> egui::Response {
     let highlight = active.then_some((theme::toggled(), theme::ink()));
-    sized_icon_button(ui, icon, enabled, highlight, tip, Vec2::splat(22.0), 15.0)
+    sized_icon_button(ui, icon, enabled, highlight, tip, touch::size2(Vec2::splat(22.0)), touch::size(15.0))
 }
 
 /// `highlight` is the fill and icon color for an active button.
@@ -101,7 +107,7 @@ fn sized_icon_button(ui: &mut Ui, icon: Icon, enabled: bool, highlight: Option<(
 /// An icon button whose on state has its own color, as Auto Key's red does.
 pub fn colored_icon_button(ui: &mut Ui, icon: Icon, on: Option<Color32>, tip: &str) -> egui::Response {
     let highlight = on.map(|fill| (fill, theme::ink()));
-    sized_icon_button(ui, icon, true, highlight, tip, Vec2::splat(22.0), 15.0)
+    sized_icon_button(ui, icon, true, highlight, tip, touch::size2(Vec2::splat(22.0)), touch::size(15.0))
 }
 
 /// The corners of button `index` in a joined row of `count`.
@@ -138,7 +144,7 @@ pub fn divider(ui: &mut Ui, height: f32) {
 
 /// Menu rows light up in the accent, as Maya's do in blue.
 pub fn menu_rows(ui: &mut Ui) {
-    ui.set_min_width(190.0);
+    ui.set_min_width(touch::size(190.0));
     let visuals = ui.visuals_mut();
     visuals.override_text_color = None;
     let w = &mut visuals.widgets;
@@ -158,6 +164,8 @@ pub fn menu(ui: &mut Ui, title: &str, content: impl FnOnce(&mut Ui)) {
 
 /// A menu entry with its shortcut right-aligned. Returns true when clicked.
 pub fn item(ui: &mut Ui, text: &str, shortcut: &str, enabled: bool) -> bool {
+    // A touch screen has no keyboard to press them on.
+    let shortcut = if touch::on() { "" } else { shortcut };
     let clicked = ui
         .add_enabled(enabled, Button::new(text).shortcut_text(RichText::new(shortcut).color(theme::text_faint())))
         .clicked();
@@ -169,7 +177,7 @@ pub fn item(ui: &mut Ui, text: &str, shortcut: &str, enabled: bool) -> bool {
 
 pub fn menu_bar(app: &mut KayeApp, ui: &mut Ui) {
     Panel::top("menu_bar")
-        .exact_size(MENU_BAR_HEIGHT)
+        .exact_size(touch::size(MENU_BAR_HEIGHT))
         .frame(bar_frame(theme::panel(), 6, 0))
         .show_separator_line(false)
         .show(ui, |ui| {
@@ -192,6 +200,9 @@ pub fn menu_bar(app: &mut KayeApp, ui: &mut Ui) {
                     }
                     super::rig_mode::mode_tabs(app, ui);
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if touch::on() {
+                            side_toggle(app, ui);
+                        }
                         ui.add_space(4.0);
                         let title = app.project_name().unwrap_or_else(|| "Untitled".to_string());
                         ui.label(RichText::new(title).color(theme::text_dim()));
@@ -254,9 +265,12 @@ fn file_menu(app: &mut KayeApp, ui: &mut Ui) {
         if item(ui, "Bake Animation", "", editing && !app.scene.modifiers.is_empty()) {
             app.bake_all_modifiers();
         }
-        ui.separator();
-        if item(ui, "Quit", "", true) {
-            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+        // Android closes apps itself, from the recent apps list.
+        if !cfg!(target_os = "android") {
+            ui.separator();
+            if item(ui, "Quit", "", true) {
+                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+            }
         }
     });
 }
@@ -490,50 +504,170 @@ pub fn show_menu(app: &mut KayeApp, ui: &mut Ui) {
 /// and paste aren't here, since everyone uses their keys, saving and opening are in the
 /// File menu, and playback lives with the timeline.
 pub fn shelf(app: &mut KayeApp, ui: &mut Ui) {
-    Panel::top("shelf").exact_size(SHELF_HEIGHT).frame(bar_frame(theme::header(), 6, 2)).show(ui, |ui| {
+    Panel::top("shelf").exact_size(touch::size(SHELF_HEIGHT)).frame(bar_frame(theme::header(), 6, 2)).show(ui, |ui| {
+        if touch::on() {
+            // A phone is too narrow for every tool, so they slide sideways under a finger,
+            // while Undo, Redo and Preferences stay put on the right.
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.spacing_mut().item_spacing.x = 1.0;
+                shelf_right(app, ui);
+                ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                    egui::ScrollArea::horizontal()
+                        .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+                        .show(ui, |ui| {
+                            ui.horizontal_centered(|ui| {
+                                ui.spacing_mut().item_spacing.x = 1.0;
+                                shelf_tools(app, ui);
+                            });
+                        });
+                });
+            });
+            return;
+        }
         ui.horizontal_centered(|ui| {
             ui.spacing_mut().item_spacing.x = 1.0;
-            if app.mode == super::rig_mode::Mode::Rigging {
-                shelf_tab(ui, "Rigging", true);
-                shelf_gap(ui);
-                super::rig_mode::tools(app, ui);
-            } else {
-                for tab in ShelfTab::ALL {
-                    if shelf_tab(ui, tab.label(), app.settings.interface.shelf_tab == tab).clicked() {
-                        app.settings.interface.shelf_tab = tab;
+            shelf_tools(app, ui);
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| shelf_right(app, ui));
+        });
+    });
+}
+
+/// A phone's one bar, in place of the menu bar and the shelf, so the 3D view keeps its
+/// height. The menus open from Menu, the shelf's tab is picked from a list, its tools slide
+/// sideways, and Undo, Redo, Preferences and the side panel stay on the right.
+pub fn phone_bar(app: &mut KayeApp, ui: &mut Ui) {
+    Panel::top("phone_bar").exact_size(touch::size(SHELF_HEIGHT)).frame(bar_frame(theme::panel(), 4, 2)).show(ui, |ui| {
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            ui.spacing_mut().item_spacing.x = 1.0;
+            side_toggle_sized(app, ui, true);
+            shelf_gap(ui);
+            shelf_right(app, ui);
+            shelf_gap(ui);
+            ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                ui.spacing_mut().item_spacing.x = 1.0;
+                let menu = egui::Button::new(RichText::new("Menu").size(touch::text(12.0)).color(theme::ink())).min_size(vec2(touch::size(44.0), touch::size(26.0)));
+                egui::containers::menu::MenuButton::from_button(menu).ui(ui, |ui| {
+                    menu_rows(ui);
+                    file_menu(app, ui);
+                    edit_menu(app, ui);
+                    create_menu(app, ui);
+                    animation_menu(app, ui);
+                    plugins_menu(app, ui);
+                    help_menu(app, ui);
+                });
+                ui.add_space(4.0);
+                for (mode, label) in [(super::rig_mode::Mode::Animation, "Animation"), (super::rig_mode::Mode::Rigging, "Rigging")] {
+                    if editor_tab(ui, label, app.mode == mode).clicked() {
+                        app.set_mode(mode);
                     }
                 }
                 shelf_gap(ui);
-                match app.settings.interface.shelf_tab {
-                    ShelfTab::Animation => animation_tools(app, ui),
-                    ShelfTab::Modifiers => modifier_tools(app, ui),
-                    ShelfTab::Objects => object_tools(app, ui),
-                    ShelfTab::View => view_tools(app, ui),
-                }
-            }
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let prefs_tip = app.tip(Action::Preferences);
-                if shelf_button(ui, Icon::Settings, theme::text(), true, app.prefs_open, &prefs_tip).clicked() {
-                    app.prefs_open = !app.prefs_open;
-                }
-                shelf_gap(ui);
-                let (undo_tip, redo_tip) = (app.tip(Action::Undo), app.tip(Action::Redo));
-                if shelf_button(ui, Icon::Redo, theme::text(), app.history.can_redo(), false, &redo_tip).clicked() {
-                    app.redo();
-                }
-                if shelf_button(ui, Icon::Undo, theme::text(), app.history.can_undo(), false, &undo_tip).clicked() {
-                    app.undo();
-                }
+                egui::ScrollArea::horizontal()
+                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+                    .show(ui, |ui| {
+                        ui.horizontal_centered(|ui| {
+                            ui.spacing_mut().item_spacing.x = 1.0;
+                            if app.mode == super::rig_mode::Mode::Rigging {
+                                super::rig_mode::tools(app, ui);
+                                return;
+                            }
+                            shelf_tab_picker(app, ui);
+                            shelf_gap(ui);
+                            match app.settings.interface.shelf_tab {
+                                ShelfTab::Animation => animation_tools(app, ui),
+                                ShelfTab::Modifiers => modifier_tools(app, ui),
+                                ShelfTab::Objects => object_tools(app, ui),
+                                ShelfTab::View => view_tools(app, ui),
+                            }
+                        });
+                    });
             });
         });
     });
 }
 
+/// The shelf's tabs as one button with a list, for a phone's narrow bar.
+fn shelf_tab_picker(app: &mut KayeApp, ui: &mut Ui) {
+    let current = app.settings.interface.shelf_tab;
+    let font = FontId::proportional(touch::text(12.0));
+    let galley = ui.painter().layout_no_wrap(current.label().to_string(), font, theme::ink());
+    let (rect, response) = ui.allocate_exact_size(vec2(galley.size().x + touch::size(30.0), touch::size(22.0)), Sense::click());
+    let fill = if response.is_pointer_button_down_on() { theme::field_active() } else { theme::section() };
+    ui.painter().rect_filled(rect, theme::RADIUS, fill);
+    ui.painter().galley(rect.left_center() + vec2(touch::size(8.0), -galley.size().y * 0.5), galley, theme::ink());
+    paint_triangle(ui.painter(), rect.right_center() - vec2(touch::size(10.0), 0.0), true, theme::ink());
+    let response = tooltip(response, "Which tools the shelf shows");
+    egui::Popup::menu(&response).show(|ui| {
+        menu_rows(ui);
+        for tab in ShelfTab::ALL {
+            if ui.add(Button::new(tab.label()).selected(tab == current).min_size(vec2(ui.available_width(), 0.0))).clicked() {
+                app.settings.interface.shelf_tab = tab;
+                ui.close();
+            }
+        }
+    });
+}
+
+/// Shows or hides the Workspace and Properties, which a phone keeps closed.
+fn side_toggle(app: &mut KayeApp, ui: &mut Ui) {
+    side_toggle_sized(app, ui, false);
+}
+
+fn side_toggle_sized(app: &mut KayeApp, ui: &mut Ui, shelf: bool) {
+    let tip = if app.touch.side { "Hide the Workspace and Properties" } else { "Show the Workspace and Properties" };
+    let clicked = if shelf {
+        shelf_button(ui, Icon::SidePanel, theme::text(), true, app.touch.side, tip).clicked()
+    } else {
+        icon_button(ui, Icon::SidePanel, true, app.touch.side, tip).clicked()
+    };
+    if clicked {
+        app.touch.side = !app.touch.side;
+    }
+}
+
+/// The shelf's tabs and the open tab's tools.
+fn shelf_tools(app: &mut KayeApp, ui: &mut Ui) {
+    if app.mode == super::rig_mode::Mode::Rigging {
+        shelf_tab(ui, "Rigging", true);
+        shelf_gap(ui);
+        super::rig_mode::tools(app, ui);
+    } else {
+        for tab in ShelfTab::ALL {
+            if shelf_tab(ui, tab.label(), app.settings.interface.shelf_tab == tab).clicked() {
+                app.settings.interface.shelf_tab = tab;
+            }
+        }
+        shelf_gap(ui);
+        match app.settings.interface.shelf_tab {
+            ShelfTab::Animation => animation_tools(app, ui),
+            ShelfTab::Modifiers => modifier_tools(app, ui),
+            ShelfTab::Objects => object_tools(app, ui),
+            ShelfTab::View => view_tools(app, ui),
+        }
+    }
+}
+
+/// Undo, Redo and Preferences, laid out right to left.
+fn shelf_right(app: &mut KayeApp, ui: &mut Ui) {
+    let prefs_tip = app.tip(Action::Preferences);
+    if shelf_button(ui, Icon::Settings, theme::text(), true, app.prefs_open, &prefs_tip).clicked() {
+        app.prefs_open = !app.prefs_open;
+    }
+    shelf_gap(ui);
+    let (undo_tip, redo_tip) = (app.tip(Action::Undo), app.tip(Action::Redo));
+    if shelf_button(ui, Icon::Redo, theme::text(), app.history.can_redo(), false, &redo_tip).clicked() {
+        app.redo();
+    }
+    if shelf_button(ui, Icon::Undo, theme::text(), app.history.can_undo(), false, &undo_tip).clicked() {
+        app.undo();
+    }
+}
+
 /// A flat text tab on the shelf. The open one is a lighter block.
 fn shelf_tab(ui: &mut Ui, label: &str, active: bool) -> egui::Response {
-    let font = FontId::proportional(12.0);
+    let font = FontId::proportional(touch::text(12.0));
     let width = ui.painter().layout_no_wrap(label.to_string(), font.clone(), theme::text()).size().x;
-    let (rect, response) = ui.allocate_exact_size(vec2(width + 16.0, 22.0), Sense::click());
+    let (rect, response) = ui.allocate_exact_size(vec2(width + touch::size(16.0), touch::size(22.0)), Sense::click());
     if active {
         ui.painter().rect_filled(rect, theme::RADIUS, theme::section());
     } else if response.hovered() {
@@ -732,7 +866,7 @@ fn view_tools(app: &mut KayeApp, ui: &mut Ui) {
 /// A colored icon. The color says what family it belongs to.
 pub(super) fn shelf_button(ui: &mut Ui, icon: Icon, tint: Color32, enabled: bool, on: bool, tip: &str) -> egui::Response {
     let sense = if enabled { Sense::click() } else { Sense::hover() };
-    let (rect, response) = ui.allocate_exact_size(vec2(32.0, SHELF_HEIGHT - 4.0), sense);
+    let (rect, response) = ui.allocate_exact_size(touch::size2(vec2(32.0, SHELF_HEIGHT - 4.0)), sense);
     let fill = if on {
         theme::toggled()
     } else if enabled && response.is_pointer_button_down_on() {
@@ -744,19 +878,19 @@ pub(super) fn shelf_button(ui: &mut Ui, icon: Icon, tint: Color32, enabled: bool
     };
     ui.painter().rect_filled(rect, theme::RADIUS, fill);
     let color = if enabled { tint } else { theme::text_faint().gamma_multiply(0.45) };
-    icons::paint(ui.painter(), egui::Rect::from_center_size(rect.center(), Vec2::splat(SHELF_ICON)), icon, color);
+    icons::paint(ui.painter(), egui::Rect::from_center_size(rect.center(), Vec2::splat(touch::size(SHELF_ICON))), icon, color);
     tooltip(response, tip)
 }
 
 pub(super) fn shelf_gap(ui: &mut Ui) {
     ui.add_space(3.0);
-    divider(ui, SHELF_HEIGHT - 14.0);
+    divider(ui, touch::size(SHELF_HEIGHT) - 14.0);
     ui.add_space(3.0);
 }
 
 /// Select, Move and Rotate, where Maya keeps them.
 pub fn tool_column(app: &mut KayeApp, ui: &mut Ui) {
-    Panel::left("tool_column").exact_size(TOOL_COLUMN_WIDTH).resizable(false).frame(bar_frame(theme::panel(), 4, 6)).show(ui, |ui| {
+    Panel::left("tool_column").exact_size(touch::size(TOOL_COLUMN_WIDTH)).resizable(false).frame(bar_frame(theme::panel(), 4, 6)).show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = 2.0;
         for (tool, icon, action) in [
             (Tool::Select, Icon::Select, Action::ToolSelect),
@@ -766,11 +900,27 @@ pub fn tool_column(app: &mut KayeApp, ui: &mut Ui) {
             let tip = app.tip(action);
             // The current tool is the one thing on screen that gets a full accent fill.
             let highlight = (app.tool == tool).then_some((theme::accent(), theme::on_accent()));
-            if sized_icon_button(ui, icon, true, highlight, &tip, Vec2::splat(30.0), 19.0).clicked() {
+            if sized_icon_button(ui, icon, true, highlight, &tip, touch::size2(Vec2::splat(30.0)), touch::size(19.0)).clicked() {
                 app.tool = tool;
             }
         }
+        if touch::on() {
+            touch_tools(app, ui);
+        }
     });
+}
+
+/// What a mouse does that a finger can't: drawing a selection box, since a drag on empty
+/// space turns the view.
+fn touch_tools(app: &mut KayeApp, ui: &mut Ui) {
+    ui.add_space(2.0);
+    ui.separator();
+    ui.add_space(2.0);
+    let boxing = app.touch.box_select.then_some((theme::toggled(), theme::ink()));
+    let tip = if app.touch.box_select { "Box Select is on: drag to select, and two fingers move the view" } else { "Box Select: drag across bones to select them" };
+    if sized_icon_button(ui, Icon::BoxSelect, true, boxing, tip, touch::size2(Vec2::splat(30.0)), touch::size(19.0)).clicked() {
+        app.touch.box_select = !app.touch.box_select;
+    }
 }
 
 pub fn status_bar(app: &mut KayeApp, ui: &mut Ui) {
