@@ -1,0 +1,12 @@
+{
+    "version":  "0.1.5",
+    "notes":  "The first Kaye for Android. It\u0027s the same Kaye as on a computer, laid out for phones and tablets: drag with one finger to turn the view, two fingers to move it, and pinch to zoom.",
+    "files":  [
+                  {
+                      "path":  "Kaye.apk",
+                      "size":  22824417,
+                      "sha256":  "0e5b7f2b84c73d35a74b7343fff2d73d07b0ecdac06658b152d25d23a357ce38",
+                      "url":  "https://github.com/Toorium/Kaye-Mobile/releases/download/v0.1.5/Kaye-0.1.5.apk"
+                  }
+              ]
+}
