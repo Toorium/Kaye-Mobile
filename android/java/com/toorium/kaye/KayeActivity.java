@@ -141,8 +141,12 @@ public class KayeActivity extends NativeActivity {
             field.setInputType(numeric
                     ? InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED
                     : InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-            field.setImeOptions(EditorInfo.IME_FLAG_NO_EXTRACT_UI | EditorInfo.IME_FLAG_NO_FULLSCREEN | EditorInfo.IME_ACTION_DONE);
+            // In landscape the keyboard takes most of the screen, so it shows the text in its
+            // own full-width editor above the keys, which is how phones type sideways.
+            field.setImeOptions(EditorInfo.IME_ACTION_DONE);
             field.setSingleLine(true);
+            field.setHint(title);
+            field.setMinHeight((int) (48 * getResources().getDisplayMetrics().density));
             field.setText(initial);
             field.selectAll();
             FrameLayout box = new FrameLayout(this);
@@ -152,8 +156,8 @@ public class KayeActivity extends NativeActivity {
             params.rightMargin = margin;
             box.addView(field, params);
             final boolean[] answered = {false};
+            // No title, which would squeeze the field out when the keyboard is up.
             final AlertDialog dialog = new AlertDialog.Builder(this)
-                    .setTitle(title)
                     .setView(box)
                     .setPositiveButton(ok, (d, which) -> {
                         answered[0] = true;
@@ -176,7 +180,7 @@ public class KayeActivity extends NativeActivity {
                     answer(id, null);
                 }
             });
-            dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE);
+            dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE | WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN);
             dialog.show();
             field.requestFocus();
         });

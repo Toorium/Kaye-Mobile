@@ -9,7 +9,7 @@ mod icons;
 mod kept;
 mod loading;
 pub mod preferences;
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", feature = "devtools"))]
 mod phone_text;
 mod references;
 mod rig_mode;
@@ -3443,7 +3443,7 @@ impl eframe::App for KayeApp {
         self.take_thumbnail(&ctx);
         self.apply_settings_changes(&ctx);
         self.settle_live_edit(&ctx);
-        #[cfg(target_os = "android")]
+        #[cfg(any(target_os = "android", feature = "devtools"))]
         phone_text::after_frame(&ctx);
         if self.startup_frames > 0 {
             self.startup_frames -= 1;
@@ -3459,8 +3459,11 @@ impl eframe::App for KayeApp {
     }
 
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        if touch::delay_pointer_gone(raw_input) {
+            _ctx.request_repaint();
+        }
         dragout::finish(self, raw_input);
-        #[cfg(target_os = "android")]
+        #[cfg(any(target_os = "android", feature = "devtools"))]
         phone_text::inject(raw_input);
         #[cfg(feature = "devtools")]
         if let Some(script) = &mut self.script {

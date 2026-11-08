@@ -12,6 +12,10 @@ const API_KEYS_PAGE: &str = "https://create.roblox.com/dashboard/credentials?act
 const WHY: &str = "Your rigs use meshes and textures that are stored on Roblox, and Kaye needs an Open Cloud API key to download them. \
     Without one, rigs still open, but their parts show up as plain grey boxes. \
     The key stays on this computer, and it only takes a minute to make.";
+/// A phone says so, since it isn't a computer.
+const WHY_PHONE: &str = "Your rigs use meshes and textures that are stored on Roblox, and Kaye needs an Open Cloud API key to download them. \
+    Without one, rigs still open, but their parts show up as plain grey boxes. \
+    The key stays on this phone, and it only takes a minute to make.";
 
 const WIDTH: f32 = 500.0;
 const TEXT_SIZE: f32 = 12.5;
@@ -72,7 +76,7 @@ pub fn window(app: &mut KayeApp, ctx: &egui::Context) {
             ui.add_space(2.0);
             // A small window or a large UI scale scrolls this, and keeps the buttons in reach.
             ScrollArea::vertical().max_height(text_height).auto_shrink([false, true]).show(ui, |ui| {
-                ui.label(RichText::new(WHY).size(TEXT_SIZE).color(theme::text()));
+                ui.label(RichText::new(if cfg!(target_os = "android") { WHY_PHONE } else { WHY }).size(TEXT_SIZE).color(theme::text()));
                 ui.add_space(8.0);
                 steps(ui);
             });

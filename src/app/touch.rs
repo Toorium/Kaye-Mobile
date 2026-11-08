@@ -90,3 +90,24 @@ pub fn is_phone(ctx: &egui::Context) -> bool {
 pub fn reach(desktop: f32) -> f32 {
     if on() { desktop * 2.0 } else { desktop }
 }
+
+/// A pointer-gone message held back from last frame.
+static GONE_WAITING: AtomicBool = AtomicBool::new(false);
+
+/// A lifted finger is reported as released and gone in the same frame, so anything that
+/// needs to know where it was let go, like a handle drag or a key being moved, saw no pointer
+/// and never ended. Holding "gone" back a frame lets every drag finish first.
+pub fn delay_pointer_gone(raw: &mut egui::RawInput) -> bool {
+    if !on() {
+        return false;
+    }
+    if GONE_WAITING.swap(false, Ordering::Relaxed) {
+        raw.events.insert(0, egui::Event::PointerGone);
+    }
+    let released = raw.events.iter().any(|e| matches!(e, egui::Event::PointerButton { pressed: false, .. }));
+    if released && raw.events.iter().any(|e| matches!(e, egui::Event::PointerGone)) {
+        raw.events.retain(|e| !matches!(e, egui::Event::PointerGone));
+        GONE_WAITING.store(true, Ordering::Relaxed);
+    }
+    GONE_WAITING.load(Ordering::Relaxed)
+}
