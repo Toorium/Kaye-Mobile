@@ -80,7 +80,18 @@ $made = Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/$Repos
 try {
     $name = "Kaye-$version.apk"
     $uri = "https://uploads.github.com/repos/$Repository/releases/$($made.id)/assets?name=$([uri]::EscapeDataString($name))"
-    $asset = Invoke-RestMethod -Method Post -Uri $uri -Headers $headers -InFile $apk -ContentType 'application/vnd.android.package-archive'
+    # curl.exe, since Invoke-RestMethod stalls sending a file this big over a slow line and
+    # GitHub then gives up on it. The sign-in goes in a file, so it isn't on a command line.
+    $headerFile = [IO.Path]::GetTempFileName()
+    $answerFile = [IO.Path]::GetTempFileName()
+    try {
+        [IO.File]::WriteAllText($headerFile, "Authorization: Bearer $token`nAccept: application/vnd.github+json`nUser-Agent: Kaye-publish`nContent-Type: application/vnd.android.package-archive`n")
+        & curl.exe -sS --fail-with-body --retry 3 -X POST -H "@$headerFile" --data-binary "@$apk" -o $answerFile $uri
+        if ($LASTEXITCODE -ne 0) { throw "The upload failed: $(Get-Content -Raw -LiteralPath $answerFile)" }
+        $asset = Get-Content -Raw -LiteralPath $answerFile | ConvertFrom-Json
+    } finally {
+        Remove-Item -Force -LiteralPath $headerFile, $answerFile -ErrorAction SilentlyContinue
+    }
 } catch {
     Write-Host 'The upload failed, so the release is being taken down again.'
     Invoke-RestMethod -Method Delete -Uri "https://api.github.com/repos/$Repository/releases/$($made.id)" -Headers $headers | Out-Null
