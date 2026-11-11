@@ -164,7 +164,7 @@ pub fn input(app: &mut KayeApp, ui: &mut Ui, rect: Rect, dt: f32) {
     for stick in [Stick::Move, Stick::Rotate] {
         let center = layout.center(stick);
         let area = Rect::from_center_size(center, Vec2::splat(layout.radius * GRAB_SHARE * 2.0));
-        let response = ui.interact(area, ui.id().with(("joystick", stick)), Sense::drag());
+        let response = ui.interact(area, ui.scope_id().with(("joystick", stick)), Sense::drag());
         let down = response.is_pointer_button_down_on();
         let held_here = app.sticks.held.is_some_and(|held| held.stick == stick);
         if down && app.sticks.held.is_none() && app.session.is_none() {
