@@ -7,6 +7,7 @@ use std::sync::Arc;
 use glam::{Mat3, Mat4, Quat, Vec3, Vec4};
 
 use super::chrome::{self, icon_button};
+use super::joystick;
 use super::icons::{self, Icon};
 use super::rig_mode::Mode;
 use super::{FrameShape, KayeApp, Selection, ToastKind, theme};
@@ -165,6 +166,8 @@ fn scene_view(app: &mut KayeApp, ui: &mut Ui, rect: Rect, frame: &mut eframe::Fr
         )
     });
     let hovered = response.hovered();
+    // Before the view and the limbs read the pointer, so a thumb on a stick only steers it.
+    joystick::input(app, ui, rect, dt);
 
     app.sync_camera_view(rect);
     camera_input(app, &response, delta, modifiers, scroll, hovered, rect, mouse);
@@ -215,6 +218,7 @@ fn scene_view(app: &mut KayeApp, ui: &mut Ui, rect: Rect, frame: &mut eframe::Fr
         painter.rect_stroke(area, 0.0, Stroke::new(1.0, theme::accent()), egui::StrokeKind::Inside);
     }
     paint_labels(app, &painter, rect);
+    joystick::paint(app, &painter, rect);
     if app.settings.interface.show_fps {
         let text = format!("{:.0} fps", 1.0 / dt.max(0.001));
         overlay_text(&painter, rect.right_bottom() - vec2(52.0, 20.0), text, FontId::proportional(11.5), theme::overlay());
@@ -397,12 +401,17 @@ fn pose_input(
     let inside = rect.contains(mouse) && response.hovered();
 
     let snap = app.drag_snap(modifiers.ctrl);
+    // A drag a thumbstick is making follows the stick, and ends when the stick is let go.
+    let stick = app.sticks.driving();
     if let Some(session) = &mut app.session {
         app.hover = Selection::None;
         session.snap = snap;
-        session.update(&mut app.scene, &app.camera, rect, mouse);
+        session.update(&mut app.scene, &app.camera, rect, stick.unwrap_or(mouse));
         let modal = session.modal;
         ctx.request_repaint();
+        if stick.is_some() {
+            return;
+        }
         if secondary {
             app.cancel_session();
             app.swallow_click = false;
@@ -1642,7 +1651,7 @@ fn shadow_view(app: &KayeApp, sun_dir: Vec3) -> (Option<Mat4>, f32) {
 
 fn paint_gizmo(app: &KayeApp, painter: &egui::Painter, rect: Rect, hot: Option<Handle>, mouse: Option<Pos2>) {
     if let Some(session) = &app.session {
-        if let Some(mouse) = mouse {
+        if let Some(mouse) = app.sticks.driving().or(mouse) {
             gizmo::paint_session_guides(painter, session, &app.camera, rect, mouse);
         }
         return;

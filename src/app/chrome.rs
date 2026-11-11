@@ -496,6 +496,9 @@ pub fn show_menu(app: &mut KayeApp, ui: &mut Ui) {
         ui.checkbox(&mut app.view.show_bones, "Bones");
         ui.checkbox(&mut app.view.bones_on_top, "Bones on Top");
         ui.checkbox(&mut app.settings.viewport.show_grid, "Grid");
+        if touch::on() {
+            ui.checkbox(&mut app.settings.viewport.joysticks, "Joysticks");
+        }
     });
 }
 

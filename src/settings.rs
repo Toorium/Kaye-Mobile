@@ -173,6 +173,9 @@ pub struct ViewportSettings {
     pub snap_rotate: bool,
     pub move_step: f32,
     pub rotate_step: f32,
+    /// On a touch screen, two thumbsticks in the Animation tab's 3D view that move and turn
+    /// the selected limb, as G and R do.
+    pub joysticks: bool,
 }
 
 impl Default for ViewportSettings {
@@ -200,6 +203,7 @@ impl Default for ViewportSettings {
             snap_rotate: true,
             move_step: 1.0,
             rotate_step: 15.0,
+            joysticks: true,
         }
     }
 }

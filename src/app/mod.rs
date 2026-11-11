@@ -6,6 +6,7 @@ mod dragout;
 pub mod graph;
 mod home;
 mod icons;
+mod joystick;
 mod kept;
 mod loading;
 pub mod preferences;
@@ -423,6 +424,8 @@ pub struct KayeApp {
     pub(crate) asset_parts: Option<(usize, Vec<PartId>)>,
     /// What a touch screen hides behind buttons, see `touch.rs`.
     pub touch: touch::Panels,
+    /// The thumbsticks for posing on a touch screen.
+    sticks: joystick::Sticks,
     #[cfg(feature = "devtools")]
     script: Option<crate::devscript::DevScript>,
 }
@@ -557,6 +560,7 @@ impl KayeApp {
             spare_parts: RefCell::new(Vec::new()),
             asset_parts: None,
             touch: touch::Panels::default(),
+            sticks: joystick::Sticks::default(),
             #[cfg(feature = "devtools")]
             script: crate::devscript::DevScript::from_env(),
         };

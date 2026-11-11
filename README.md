@@ -25,6 +25,8 @@ This is Kaye for Android phones and tablets. It's the same program as on a compu
 
 **In the 3D view:** drag with one finger to turn the view, and with two fingers to move it. Pinch to zoom. Tap a part to select it, and drag a handle to move or rotate it. Hold a finger down for the right-click menu. Box Select, under the tools on the left, makes a drag select instead.
 
+**Posing with the sticks:** in the Animation tab, two thumbsticks sit in the bottom corners of the 3D view. With a limb selected, push the left one to move it and the right one to turn it, like G and R. Double tap the right one for free rotate, like `R R`, and double tap it again to go back. Letting go ends the move as one undo step. They can be hidden from the 3D view's Show menu.
+
 Projects you save stay inside Kaye and show on its home page. Rigs, projects and pictures open from anywhere on the phone through Open and Import, and exports are saved where you pick.
 
 ![Kaye with an R6 rig in Roblox's template clothing, its bones drawn on top and the Workspace listing its joints](docs/images/cover-r6.png)
